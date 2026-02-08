@@ -1,0 +1,21 @@
+#!/bin/bash
+
+# Install LG TV brightness control and pair with your TV.
+
+set -e
+
+echo "Installing LG TV control dependencies..."
+omarchy-pkg-aur-add lgwebosremote-git
+
+echo ""
+echo "Make sure the TV is on and connected to the same network."
+tv_ip=$(gum input --placeholder "192.168.1.x" --prompt "TV IP address: ")
+
+if [[ -z "$tv_ip" ]]; then
+  echo "No IP provided. You can pair later with: lgtv auth <IP>"
+  exit 0
+fi
+
+echo "Pairing with $tv_ip — accept the prompt on the TV..."
+lgtv auth "$tv_ip"
+echo "Config saved to ~/.config/lgtv/config.json"
