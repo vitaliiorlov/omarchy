@@ -29,6 +29,45 @@ while true; do
     if grep -q '"key": "' ~/.config/lgtv/config.json 2>/dev/null; then
       echo ""
       echo "Paired successfully! Config saved to ~/.config/lgtv/config.json"
+
+      # --- Picture mode toggle setup ---
+      if gum confirm "Set up picture mode toggling?"; then
+        echo ""
+        echo "Select which modes to toggle between (at least 2):"
+        selected=$(gum choose --no-limit --ordered \
+          --selected "Filmmaker,Game Optimizer" \
+          "Filmmaker" "Game Optimizer" "Standard" "Cinema" "Vivid" "Sports")
+
+        # Map display names to config names
+        modes=""
+        while IFS= read -r name; do
+          case "$name" in
+            "Filmmaker")       modes+="filmmaker"$'\n' ;;
+            "Game Optimizer")  modes+="game"$'\n' ;;
+            "Standard")        modes+="standard"$'\n' ;;
+            "Cinema")          modes+="cinema"$'\n' ;;
+            "Vivid")           modes+="vivid"$'\n' ;;
+            "Sports")          modes+="sports"$'\n' ;;
+          esac
+        done <<< "$selected"
+
+        # Count selected modes
+        count=$(echo -n "$modes" | grep -c .)
+        if [[ $count -lt 2 ]]; then
+          echo "Need at least 2 modes. Skipping picture mode setup."
+        else
+          printf "%s" "$modes" > "$HOME/.config/lgtv/toggle-modes"
+          echo "Saved $count toggle modes to ~/.config/lgtv/toggle-modes"
+
+          # Add keybinding if not already present
+          bindings="$HOME/.config/hypr/bindings.conf"
+          if [[ -f "$bindings" ]] && ! grep -q "omarchy-lgtv-picture-mode" "$bindings"; then
+            printf '\n# LG TV picture mode toggle\nbindd = , XF86Tools, Toggle TV picture mode, exec, omarchy-lgtv-picture-mode\n' >> "$bindings"
+            echo "Added picture mode toggle keybinding (XF86Tools key)"
+          fi
+        fi
+      fi
+
       exit 0
     else
       echo "Pairing was not accepted. Did you approve the prompt on the TV?"
