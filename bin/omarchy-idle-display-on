@@ -1,0 +1,3 @@
+#!/bin/bash
+hyprctl dispatch dpms on && brightnessctl -r
+# omarchy-lgtv-ready config && omarchy-lgtv-auto-power on

@@ -6,6 +6,8 @@
 sed -i '/^# LG TV picture mode toggle$/d' "$HOME/.config/hypr/bindings.conf"
 sed -i '/omarchy-lgtv-picture-mode/d' "$HOME/.config/hypr/bindings.conf"
 
+rm -f ~/.local/state/omarchy/toggles/lgtv-auto-power-off
+
 rm -rf ~/.config/lgtv
 rm -f ~/.cache/lgtv-brightness ~/.cache/lgtv-brightness.lock
 omarchy-pkg-drop lgwebosremote-git

@@ -1,0 +1,3 @@
+#!/bin/bash
+sleep 1 && hyprctl dispatch dpms on
+# omarchy-lgtv-ready config && omarchy-lgtv-auto-power on

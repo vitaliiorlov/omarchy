@@ -1,0 +1,67 @@
+#!/usr/bin/env python3
+"""
+Control LG TV power on sleep/wake/idle events.
+Guarded by toggle state file and lgtv config check.
+
+Usage:
+  omarchy-lgtv-auto-power off  # Turn off (standby via WebSocket)
+  omarchy-lgtv-auto-power on   # Turn on (Wake-on-LAN)
+"""
+import json
+import sys
+from pathlib import Path
+
+TOGGLE_FILE = Path.home() / ".local/state/omarchy/toggles/lgtv-auto-power-off"
+CONFIG_PATH = Path.home() / ".config/lgtv/config.json"
+
+
+def main() -> int:
+    if TOGGLE_FILE.exists():
+        return 0
+
+    if not CONFIG_PATH.exists():
+        return 0
+
+    if len(sys.argv) < 2:
+        return 0
+
+    cmd = sys.argv[1]
+
+    if cmd == "on":
+        # Wake-on-LAN doesn't need WebSocket — just send magic packet
+        with open(CONFIG_PATH) as f:
+            config = json.load(f)
+        tv = config.get("MyTV") or next(iter(config.values()))
+        mac = tv.get("mac")
+        ip = tv.get("ip")
+        if mac:
+            from wakeonlan import send_magic_packet
+            send_magic_packet(mac, ip_address=ip)
+        return 0
+
+    from lgtv_common import LGTVClient, load_config
+
+    try:
+        ip, key = load_config()
+    except (FileNotFoundError, KeyError):
+        return 0
+
+    commands = {
+        "off": ("ssap://system/turnOff", None),
+    }
+
+    if cmd not in commands:
+        return 0
+
+    uri, payload = commands[cmd]
+    request = {"type": "request", "id": "auto_power", "uri": uri}
+    if payload:
+        request["payload"] = payload
+
+    client = LGTVClient(ip, key)
+    client.execute(request)
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
