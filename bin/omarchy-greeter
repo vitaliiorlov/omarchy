@@ -2,7 +2,7 @@
 
 # Switch greetd greeter between tuigreet and regreet
 
-session_cmd="UWSM_SILENT_START=2 uwsm start -e -D Hyprland hyprland.desktop"
+session_cmd="env UWSM_SILENT_START=2 uwsm start -e -D Hyprland hyprland.desktop"
 template_dir="$OMARCHY_PATH/config/greetd"
 autologin=false
 greeter_type=""
