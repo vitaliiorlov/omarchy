@@ -1,8 +1,7 @@
 sudo mkdir -p /etc/greetd
 
 # Install greetd configs and set up autologin
-omarchy-greeter tuigreet --autologin
-sudo cp "$OMARCHY_PATH/config/greetd/regreet.toml" /etc/greetd/regreet.toml
+omarchy-greeter regreet --autologin
 
 # Keep Plymouth splash visible until Hyprland takes over the display
 sudo mkdir -p /etc/systemd/system/greetd.service.d
