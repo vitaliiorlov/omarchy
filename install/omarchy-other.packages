@@ -19,6 +19,8 @@ iwd
 jdk-openjdk
 libpulse
 libsass
+intel-ipu7-camera
+intel-lpmd
 intel-media-driver
 libva-intel-driver
 libva-nvidia-driver
@@ -30,6 +32,8 @@ linux-cachyos
 linux-firmware
 # [omarchy] linux-headers
 linux-cachyos-headers
+linux-ptl
+linux-ptl-headers
 macbook12-spi-driver-dkms
 nvidia-580xx-dkms
 nvidia-dkms
@@ -45,9 +49,11 @@ pipewire-pulse
 qt6-wayland
 sassc
 # [omarchy] snapper
+thermald
 webp-pixbuf-loader
 wget
 yay-debug
+tuxedo-drivers-nocompatcheck-dkms
 yt6801-dkms
 zram-generator
 
