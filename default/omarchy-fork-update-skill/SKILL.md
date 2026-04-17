@@ -31,13 +31,26 @@ git diff v<current>..upstream/master --stat    # changed files summary
 
 Report to the user: how many new commits, what version, high-level summary of changes.
 
-### Step 2: Merge
+### Step 2: Stash pending work (pre-flight)
+
+Before merging, check `git status`. If the tree is dirty, stash it — `git merge` will refuse to run if any working-tree file conflicts with an incoming change, and a stale staged-but-modified file (e.g. a new file staged as empty but later given content) will also block `git stash`.
+
+```bash
+git status
+# If dirty: re-stage any new/modified files cleanly, then stash
+git add -A    # or just the problematic files
+git stash push -u -m "pre-upstream-merge pending work"
+```
+
+The stash is restored in Step 7 after the merge commit.
+
+### Step 3: Merge
 
 ```bash
 git merge upstream/master
 ```
 
-### Step 3: Resolve conflicts
+### Step 4: Resolve conflicts
 
 Conflicts are expected in fork-modified files. Follow these rules:
 
@@ -67,9 +80,11 @@ Conflicts are expected in fork-modified files. Follow these rules:
 4. When upstream reorganizes code (moves/renames files), follow the reorganization and drop our references to the old locations
 5. Verify referenced files exist: `ls <path>` or `git show upstream/master:<path>`
 
-### Step 4: Audit `# [omarchy]` comments
+### Step 5: Audit `# [omarchy]` comments and excluded packages
 
-After resolving conflicts, check if upstream removed any lines we commented out:
+**5a. Verify `[omarchy]` markers still match upstream**
+
+Check if upstream removed any lines we commented out:
 
 ```bash
 grep -rn '\[omarchy\]' . --include='*.sh' --include='*.conf' --include='*.packages' --include='*.toml' --include='*.jsonc'
@@ -77,7 +92,57 @@ grep -rn '\[omarchy\]' . --include='*.sh' --include='*.conf' --include='*.packag
 
 For each marker, run `git show upstream/master:<file>` and verify the original line still exists upstream. If upstream deleted it too, remove our `# [omarchy]` comment to stay in sync.
 
-### Step 5: Verify and commit
+**5b. Verify no new code path reintroduces an excluded package**
+
+The `[omarchy]` marker audit only catches lines the fork commented out. It does NOT catch upstream introducing a new `omarchy-pkg-add fcitx5` (or equivalent) in a fresh install script or migration. Run the exclusion audit on every new or modified `.sh` since the previous tag:
+
+```bash
+# Exclusion list: packages the fork deliberately does not install
+EXCLUDED='fcitx5|snapper|sddm|limine-snapper-sync|\blinux\b|linux-headers|makima'
+
+# Grep pkg-add / pacman -S / systemctl enable calls in changed .sh files
+git diff v<previous>..HEAD --name-only -- '*.sh' \
+  | xargs grep -nE "(omarchy-pkg-add|omarchy-pkg-aur-add|pacman +-S|systemctl +enable).*($EXCLUDED)" 2>/dev/null
+```
+
+If anything matches, surface it to the user — upstream may have re-added a package under a new code path.
+
+### Step 6: Audit new migrations
+
+Migrations (`migrations/*.sh`) are the main attack surface for silent breakage. They run once on `omarchy-update` and can:
+- Install or uninstall packages (e.g. re-adding excluded packages, or removing one the user actively relies on)
+- Touch boot/kernel files (`/etc/default/limine`, `/etc/udev/rules.d/`, `limine-mkinitcpio`, `limine-update`)
+- Write to user's `~/.config/` or wipe existing config dirs
+
+List new/modified migrations since the previous tag and read each one:
+
+```bash
+git diff v<previous>..HEAD --stat -- migrations/
+```
+
+For each migration, classify:
+
+| Class | Definition | Action |
+|---|---|---|
+| **no-op** | Guard condition fails on user's hardware/setup (no battery, no XPS, no swapfile, package not installed) | Report as no-op, let it run |
+| **benign** | Reinstalls idempotent wrappers, creates harmless files | Report briefly, let it run |
+| **cosmetic** | Will emit errors on stderr but exits 0 (e.g. `sudo tee /usr/lib/chromium/...` when chromium isn't installed) | Report the noise; offer pre-skip via `touch ~/.local/state/omarchy/migrations/skipped/<id>.sh` |
+| **destructive** | Uninstalls a package the user uses, wipes `~/.config/<app>/`, touches limine/boot/btrfs/snapper/kernel cmdline | **Stop and ask the user before running `omarchy-update`** |
+
+**Verify actual system state** before classifying — don't assume:
+- `pacman -Qi <pkg>` for each package the migration touches
+- `systemctl is-enabled <service>` for services it disables/removes
+- `ls <path>` for config dirs it deletes (`~/.config/makima`, `~/.config/fcitx5`, etc.)
+- `bin/omarchy-hw-match <model>`, `bin/omarchy-battery-present`, `bin/omarchy-hw-intel-ptl` for hardware guards
+- `[[ -f /etc/limine-entry-tool.d/resume.conf ]]`, `[[ -f /swap/swapfile ]]` for limine/hibernation guards
+
+Present a table to the user: migration id, what it does, guard condition, actual match on this system, verdict (no-op / benign / cosmetic / destructive), recommendation.
+
+For any **destructive** migration — including pkg-drop of something installed, or writes to `/etc/default/limine` — ask explicitly before the user runs `omarchy-update`. Offer pre-skipping: `touch ~/.local/state/omarchy/migrations/skipped/<id>.sh`.
+
+Also re-check excluded packages (Step 5b) against migration contents — a migration installing fcitx5 via `omarchy-pkg-add` would bypass our `omarchy-base.packages` comment-outs.
+
+### Step 7: Verify, commit, restore stash
 
 ```bash
 # Ensure no conflict markers remain
@@ -86,11 +151,14 @@ grep -rn '<<<<<<\|>>>>>>' . --include='*.sh' --include='*.conf' --include='*.pac
 # Stage resolved files and commit
 git add <resolved files>
 git commit -m "Merge upstream/master: v<version> - <brief summary of key changes>"
+
+# Restore pre-merge pending work (from Step 2)
+git stash pop
 ```
 
 The commit message should list conflicts resolved and key upstream changes.
 
-### Step 6: Diff configs against `~/.config/`
+### Step 8: Diff configs against `~/.config/`
 
 Compare upstream config changes against the user's local files:
 
@@ -121,7 +189,7 @@ After applying changes:
 - `chezmoi re-add <file>` for each modified `~/.config/` file
 - Restart affected services (`omarchy-restart-waybar`, `hyprctl reload`, etc.)
 
-### Step 7: Push and update
+### Step 9: Push and update
 
 ```bash
 git push origin master --tags
@@ -130,6 +198,27 @@ git push origin master --tags
 Tags MUST be pushed — otherwise waybar shows a false update icon (`omarchy-update-available` compares local vs remote tags).
 
 Then tell the user to run `omarchy-update` in a terminal (it needs an interactive TTY for the confirmation prompt).
+
+### Step 10: Check `omarchy-nvim` package drift
+
+`omarchy-update` runs `pacman -Syu`, which may upgrade the `omarchy-nvim` package. The nvim config is NOT managed by this fork — it ships as a separate Arch package from the `[omarchy]` pacman repo, installing into `/usr/share/omarchy-nvim/config/`. The user's `~/.config/nvim/` was bootstrapped once and is now heavily customized (~25 custom plugins). Pacman upgrades do NOT auto-sync — drift accumulates silently.
+
+After the user confirms `omarchy-update` ran, check for drift:
+
+```fish
+diff -rq /usr/share/omarchy-nvim/config ~/.config/nvim 2>&1 | grep differ
+```
+
+**Files worth syncing** (pull in when upstream changes them):
+- `lua/plugins/all-themes.lua` — new themes added periodically. Always sync; then tell user to run `:Lazy sync` in nvim to install new theme plugins. *Historical note: syncing this file once fixed a catppuccin v2.0.0 rendering regression, likely via load-order / priority changes.*
+- `lua/plugins/omarchy-theme-hotreload.lua` — hot-reload logic improvements.
+- `plugin/after/transparency.lua` — transparent highlight group list.
+
+**Files to leave alone** (user has customized, review diffs for upstream bug fixes only, don't blindly overwrite):
+- `lua/config/autocmds.lua`, `keymaps.lua`, `lazy.lua`, `options.lua`
+- `init.lua`, `lazyvim.json`, `lazy-lock.json`
+
+**NEVER run `omarchy-nvim-setup`** on a customized config — it does `mv ~/.config/nvim ~/.config/nvim.backup.<date>` and wipes the user's 25+ custom plugins. Always cherry-pick individual files instead.
 
 ## CachyOS System Safety — Boot, Limine, and Btrfs
 
@@ -150,3 +239,4 @@ Then tell the user to run `omarchy-update` in a terminal (it needs an interactiv
 - Never apply config changes to `~/.config/` without user confirmation
 - Never run `omarchy-update` non-interactively — it requires TTY confirmation
 - Never accept upstream changes to limine, boot, btrfs, or kernel packages without explicit user approval
+- Never let a destructive migration run without asking — migrations can silently uninstall packages or wipe `~/.config/` dirs
