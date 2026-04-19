@@ -20,5 +20,8 @@ echo
 sudo cp -f "$OMARCHY_PATH/default/pacman/pacman-$channel.conf" /etc/pacman.conf
 sudo cp -f "$OMARCHY_PATH/default/pacman/mirrorlist-$channel" /etc/pacman.d/mirrorlist
 
+# [omarchy] Re-inject CachyOS optimized repos (the template copy above wipes them).
+bash "$OMARCHY_PATH/install/helpers/cachyos-repos.sh"
+
 # Reset all package DBs and then update
 sudo pacman -Syyuu --noconfirm
