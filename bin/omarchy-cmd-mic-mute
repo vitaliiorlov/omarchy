@@ -1,9 +1,25 @@
 #!/bin/bash
 
 # Toggle microphone mute. Dell XPS systems get special handling for the hardware LED.
+# Elsewhere we toggle via wpctl and draw the OSD with a custom message, because
+# swayosd-client --input-volume mute-toggle (0.3.1) renders the OSD but silently
+# no-ops the toggle on several PipeWire configurations.
 
 if omarchy-hw-match "XPS"; then
   omarchy-cmd-mic-mute-xps
 else
-  swayosd-client --monitor "$(omarchy-hyprland-monitor-focused)" --input-volume mute-toggle
+  wpctl set-mute @DEFAULT_AUDIO_SOURCE@ toggle >/dev/null
+
+  if pactl get-source-mute @DEFAULT_SOURCE@ | rg -q 'yes'; then
+    osd_message='Microphone muted'
+    osd_icon='microphone-sensitivity-muted-symbolic'
+  else
+    osd_message='Microphone on'
+    osd_icon='audio-input-microphone-symbolic'
+  fi
+
+  swayosd-client \
+    --monitor "$(omarchy-hyprland-monitor-focused)" \
+    --custom-message "$osd_message" \
+    --custom-icon "$osd_icon"
 fi
